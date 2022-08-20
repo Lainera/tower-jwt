@@ -23,10 +23,12 @@ where
     type Claim = C;
     type Future = Ready<Result<Self::Claim, Self::Error>>;
 
+    #[tracing::instrument(skip_all)]
     fn decode(&self, token: &str) -> Self::Future {
+        tracing::trace!("InPlace::entered");
         let decoded = jsonwebtoken::decode::<Self::Claim>(token, &self.key, &self.validation)
             .map(|token_data| token_data.claims);
-
+        tracing::trace!("InPlace::decoded");
         future::ready(decoded)
     }
 }
@@ -66,6 +68,7 @@ impl<C> InPlace<C> {
 #[derive(Debug, Default)]
 pub struct Empty;
 
+/// Builder for [`InPlace`]
 pub struct InPlaceBuilder<K, V> {
     key: K,
     validation: V,

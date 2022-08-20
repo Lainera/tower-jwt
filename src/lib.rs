@@ -162,7 +162,9 @@ where
         self.service.poll_ready(cx).map_err(Error::Inner)
     }
 
+    #[tracing::instrument(skip_all)]
     fn call(&mut self, req: Request<B>) -> Self::Future {
+        tracing::trace!("Middleware::entered");
         let token = match req
             .headers()
             .typed_get::<Authorization>()
@@ -174,9 +176,11 @@ where
             _ => return Either::Right(std::future::ready(Err(Error::MissingAuthorizationHeader))),
         };
 
+        tracing::trace!("Middleware::header_extracted");
         let clone = self.service.clone();
         let service = core::mem::replace(&mut self.service, clone);
         let decoder_future = self.decoder.decode(&token);
+        tracing::trace!("Middleware::decoder_future_created");
         Either::Left(MiddlewareFuture::new(service, req, decoder_future))
     }
 }
