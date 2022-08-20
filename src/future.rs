@@ -64,12 +64,16 @@ where
     D::Claim: Send + Sync + 'static,
 {
     type Output = Result<S::Response, Error<S::Error, D::Error>>;
+
+    #[tracing::instrument(skip_all)]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        tracing::trace!("MiddlewareFuture::entered");
         let mut this = self.project();
         loop {
             match this.state.as_mut().project() {
                 StateProject::Decoding(mut decoding) => {
                     let outcome = ready!(decoding.as_mut().poll(cx));
+                    tracing::trace!("MiddlewareFuture::decoded");
                     match outcome {
                         Ok(claim) => {
                             let mut request = this
@@ -79,13 +83,16 @@ where
                                 // which takes ownership of actual request struct
                                 .expect("Request was missing on the future");
                             request.extensions_mut().insert::<D::Claim>(claim);
+                            tracing::trace!("MiddlewareFuture::modified_request");
                             let fut = this.service.call(request);
-                            this.state.set(State::Responding(fut))
+                            this.state.set(State::Responding(fut));
+                            tracing::trace!("MiddlewareFuture::state_switched");
                         }
                         Err(err) => return Poll::Ready(Err(Error::Decoder(err))),
                     }
                 }
                 StateProject::Responding(responding) => {
+                    tracing::trace!("MiddlewareFuture::polling_inner");
                     return responding.poll(cx).map_err(Error::Inner)
                 }
             }
